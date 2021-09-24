@@ -86,7 +86,7 @@ def read_input():
 
     if v is not None:
         for i in v:
-            tmp = i.split(':')
+            tmp = i.split('-:-')
             var_key = tmp[0]
             var_value = tmp[1]
             template_var["data"]["attributes"]["key"] = var_key
