@@ -1,1 +1,1 @@
-Simple app to add and update variables located in terraform cloud
+Simple app to add and update variables located in terraform cloud.
