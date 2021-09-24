@@ -1,7 +1,10 @@
+import os
+
 import requests
 import json
 import hcl
 from pathlib import Path
+import argparse
 
 with open(f"{Path.home()}/.terraformrc", "r") as fp:
     token = hcl.load(fp)["credentials"]["app.terraform.io"]["token"]
@@ -27,9 +30,8 @@ def get_variables(workspace: str, org: str):
 
 def update_variable(workspace: str, org: str, var: dict):
     workspace = __get_ws(ws_name=workspace, org=org).json()["data"]["id"]
-    return requests.patch(url="https://app.terraform.io/api/v2/workspaces/{ws}/vars/{var_id}".format(ws=workspace,
-                                                                                                     var_id=var["data"][
-                                                                                                         "id"]),
+    return requests.patch(url="https://app.terraform.io/api/v2/workspaces/{ws}/vars/{var_id}"
+                          .format(ws=workspace, var_id=var["data"]["id"]),
                           headers={"Authorization": "Bearer {}".format(token),
                                    "Content-Type": "application/vnd.api+json"},
                           data=json.dumps(var))
@@ -43,40 +45,45 @@ def insert_variable(workspace: str, var: dict):
 
 
 def __get_ws(ws_name, org):
-    return requests.get(url="https://app.terraform.io/api/v2/organizations/{org}/workspaces/{ws}".format(org=org,
-                                                                                                         ws=ws_name),
-                        headers={"Authorization": "Bearer {}".format(token),
-                                 "Content-Type": "application/vnd.api+json"})
+    res = requests.get(url="https://app.terraform.io/api/v2/organizations/{org}/workspaces/{ws}".format(org=org,
+                                                                                                        ws=ws_name),
+                       headers={"Authorization": "Bearer {}".format(token),
+                                "Content-Type": "application/vnd.api+json"})
+
+    return res
 
 
 def read_input():
-    with open("../vars.json", "r") as payload:
-        body = json.loads(payload.read())
-        for i in body:
-            if i == "messages_staging":
-                org = body[i]["organization"]
-                ws = body[i]["workspace"]
-                for j in body[i]["vars"]:
-                    template_var["data"]["attributes"]["key"] = j["key"]
-                    template_var["data"]["attributes"]["value"] = j["value"]
-                    template_var["data"]["attributes"]["category"] = "env" if j["is_env"] else "terraform"
+    parser = argparse.ArgumentParser(description='Initialize terraform workspace and add env variables automatically.')
 
-                    res = insert_variable(var=template_var,
-                                          workspace=__get_ws(ws_name=ws, org=org).json()["data"]["id"])
+    parser.add_argument('-o', '--organization', nargs=1, type=str, required=True, dest='org',
+                        help='Organization to be used.')
 
-                    if res.status_code == 422:
-                        all_vars = get_variables(org=org, workspace=ws)
-                        for var in all_vars:
-                            if var["attributes"]["key"] == j["key"] and var["attributes"]["value"] != j["value"]:
-                                template_var["data"]["id"] = var["id"]
-                                res = update_variable(workspace=ws, org=org, var=template_var)
-                                print(res)
-                                template_var.pop("id", None)
+    parser.add_argument('-w', '--workspace', nargs=1, type=str, required=True, dest='ws',
+                        help='Workspace where the variables will be inserted')
 
-                    if res.status_code == 201:
-                        print("Succesfully inserted variable: {}".format(j["key"]))
+    parser.add_argument('-v', '--var', nargs='*', type=str, required=False, dest='v',
+                        help='Non environment variables to be inserted, must be typed in key:value format',
+                        default=None)
+
+    args = parser.parse_args()
+
+    org = args.org[0]
+    ws = args.ws[0]
+
+    v = args.v
+
+    if v is not None:
+        for i in v:
+            tmp = i.split(':')
+            var_key = tmp[0]
+            var_value = tmp[1]
+            template_var["data"]["attributes"]["key"] = var_key
+            template_var["data"]["attributes"]["value"] = var_value
+            template_var["data"]["attributes"]["category"] = "terraform"
+
+            print(template_var)
 
 
 if __name__ == '__main__':
-    # get_variables(workspace="tf-digidolar-languages-staging", org="bvi-wallenomic")
     read_input()
